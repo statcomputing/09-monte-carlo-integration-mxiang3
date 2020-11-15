@@ -1,0 +1,244 @@
+---
+title: "Homework 9"
+author: "Meiruo Xiang"
+date: "11/11/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# 7.5.1 Importance sampling
+
+### a. Orstein-Uhlenbeck Process proof
+
+$$
+\begin{aligned}
+h(x)&=x^2\\
+E(X^2) 
+&= \int^{+\infty}_{-\infty} x^2 \frac{1}{5 \sqrt{2 \pi}} x^2 e^{-\frac{(x-2)^2}{2}} dx\\
+&= \int^{+\infty}_{-\infty} h(x) \frac{f(x)}{g(x)} g(x) dx\\
+&= \int^{+\infty}_{-\infty} (x^2)*(\frac{1}{5} x^2 e^{2x-2} ) *(\frac{1}{\sqrt{2\pi}} e^{-\frac{x^2}{2}}) dx\\    
+\end{aligned}
+$$
+where $g(x)=\frac{1}{\sqrt{2\pi}} e^{-\frac{x^2}{2}}$ is the standard normal density, 
+and $w(x) = \frac{f(x)}{g(x)} = \frac{1}{5} x^2 e^{2x-2}$ is the importane weight.
+
+
+```{r}
+h  <- function(x) x^2
+df <- function(x) {
+  x ^ 2 * exp(-(x - 2)^2 / 2) / 
+    (5 * sqrt(2 * base::pi))
+}
+rg <- function(n) rnorm(n)
+dg <- function(x) dnorm(x)
+
+isAppr <- function(n, h, df, dg, rg) {
+  x <- rg(n)
+  mean( h(x) * df(x) / dg(x) )
+}
+
+mySummary <- function(nrep, n, h, df, dg, rg) {
+    sim <- replicate(nrep, isAppr(n, h, df, dg, rg))
+    c(mean = mean(sim), var = var(sim))
+}
+
+# using 1000 samples
+mySummary(100, n = 1000, h, df, dg, rg)
+# using 10000 samples
+mySummary(100, n = 10000, h, df, dg, rg)
+# using 50000 samples
+mySummary(100, n = 50000, h, df, dg, rg)
+```
+
+### b.  
+
+A better $g(x)$ can be $g^*(x)=e^{-\frac{(x-2)^2}{2}}$ with desity of $N(2, 1)$.
+
+$g^*(x)$ is closer to the proportion of $|h(x)|f(x)=x^2 \frac{1}{5 \sqrt{2 \pi}} x^2 e^{-\frac{(x-2)^2}{2}}$ than $g(x)=\frac{1}{\sqrt{2\pi}} e^{-\frac{x^2}{2}}$. Therefore, $g^*(x)$ can lower the variance of the weighted estimator, which is better than the standard norm density $g(x)$.
+
+
+### c. 
+```{r}
+rg <- function(n) rnorm(n, mean = 2)
+dg <- function(x) dnorm(x, mean = 2)
+# using 1000 samples
+mySummary(100, n = 1000, h, df, dg, rg)
+# using 10000 samples
+mySummary(100, n = 10000, h, df, dg, rg)
+# using 50000 samples
+mySummary(100, n = 50000, h, df, dg, rg)
+```
+
+### d. 
+
+The output of integration using both $g(x)$ and $g^*(x)$ are similar, all six values are around 8. And as the sample size increase, the variance of output will decrease.
+
+However, the output of integration using $g(x)$ has a larger variance than the second one using $g^*(x)$. This is because $g^*(x)$ is closer to the proportion of $|h(x)|f(x)=x^2 \frac{1}{5 \sqrt{2 \pi}} x^2 e^{-\frac{(x-2)^2}{2}}$, so it can lower the variance.
+
+
+# 7.5.2 Geometric Brownian motion
+
+### a.
+By Ito's formula, we have
+$$S(t) =  S(0) e^{(r-\frac{1}{2}\sigma^2)t + \sigma W(t)}$$
+where $W(t)-W(s)\sim N(0,t-s)$.
+
+And
+$$S(t+h) =  S(t) e^{(r-\frac{1}{2}\sigma^2)h + \sigma\sqrt{h}*Z}$$
+where $Z \sim N(0,1)$.
+
+In this quesiton, n=12, T=1, so h=1/(12-1)=0.09090909.
+
+```{r}
+set.seed(123)
+S0 <- 1
+r <- 0.05
+n <- 12
+
+sigma <- 0.5
+strikT <- 1 # T
+nrep <- 1
+
+# Stock price from time 0 to T
+St <- function(t, S0, sigma, nrep) {
+  x <- rnorm(nrep * n, sd = sigma * sqrt(strikT / n))
+  tmat <- matrix(t, nrep, n, byrow = TRUE)
+  Wmat <- matrix(x, nrep, n, byrow = TRUE)
+  Wt = t(apply(Wmat, 1, cumsum))
+  S0 * exp((r - 0.5 * sigma^2) * tmat + Wt)
+}
+
+t <- seq(0, strikT, by = strikT / n)[-1]
+path <- St(t, S0, sigma, nrep)
+plot(t, path, ylab = "Path", main = "Sample path of S(t)")
+```
+
+
+
+### b.
+
+```{r}
+set.seed(66)
+K <- c(1.1, 1.2, 1.3, 1.4, 1.5)
+sigma <- 0.5
+strikT <- 1 # T
+nrep <- 5000
+
+# ST, P_A, P_E and P_G for nrep simulation
+Payoff <- function(nrep, sigma, strikT, K) {
+  t <- seq(0, strikT, by = strikT/n)[-1]
+  path <- St(t, S0, sigma, nrep)
+  ST <- path[, n]
+  SA <- rowMeans(path)
+  SG <- exp(rowMeans(log(path)))
+  P_A <- exp(-r * strikT) * pmax(SA - K , 0)
+  P_E <- exp(-r * strikT) * pmax(ST - K , 0)
+  P_G <- exp(-r * strikT) * pmax(SG - K , 0)
+  list(ST = ST, P_A = P_A, P_E = P_E, P_G = P_G)
+}
+
+cor_K <- matrix(0, 5, 3)
+for(i in 1:5) {
+  P <- Payoff(nrep, sigma, strikT, K[i])
+  cor_K[i, 1] <- cor(P$P_A, P$ST)
+  cor_K[i, 2] <- cor(P$P_A, P$P_E)
+  cor_K[i, 3] <- cor(P$P_A, P$P_G)
+}
+
+colnames(cor_K) <- c("cor(P_A, S(T))", "cor(P_A, P_E)",
+                         "cor(P_A, P_G)")
+rownames(cor_K) <- c("K = 1.1", "K = 1.2", "K = 1.3",
+                      "K = 1.4", "K = 1.5")
+cor_K
+```
+
+When K is creasing, the three correlation coefficients are decreasing.
+
+
+### c.
+```{r}
+set.seed(66)
+K <- 1.5
+strikT <- 1 # T
+sigma <- c(0.2, 0.3, 0.4, 0.5)
+cor_sig <- matrix(0, 4, 3)
+for(i in 1:4) {
+  P <- Payoff(nrep, sigma[i], strikT, K)
+  cor_sig[i, 1] <- cor(P$P_A, P$ST)
+  cor_sig[i, 2] <- cor(P$P_A, P$P_E)
+  cor_sig[i, 3] <- cor(P$P_A, P$P_G)
+}
+
+colnames(cor_sig) <- c("cor(P_A, S(T))", "cor(P_A, P_E)",
+                         "cor(P_A, P_G)")
+rownames(cor_sig) <- c("sigma = 0.2", "sigma = 0.3", "sigma = 0.4",
+                      "sigma = 0.5")
+cor_sig
+```
+
+When $\sigma$ is creasing, the three correlation coefficients are also increasing.
+
+### d.
+```{r}
+set.seed(66)
+K <- 1.5
+strikT <- c(0.4, 0.7, 1, 1.3, 1.6)
+sigma <- 0.5
+cor_T <- matrix(0, 5, 3)
+for(i in 1:5) {
+  P <- Payoff(nrep, sigma, strikT[i], K)
+  cor_T[i, 1] <- cor(P$P_A, P$ST)
+  cor_T[i, 2] <- cor(P$P_A, P$P_E)
+  cor_T[i, 3] <- cor(P$P_A, P$P_G)
+}
+
+colnames(cor_T) <- c("cor(P_A, S(T))", "cor(P_A, P_E)",
+                         "cor(P_A, P_G)")
+rownames(cor_T) <- c("T = 0.4", "T = 0.7", "T = 1", 
+                       "T = 1.3", "T = 1.6")
+cor_T
+```
+When $T$ is creasing, the three correlation coefficients does not has a significant monotonic pattern, it just fluctuate a little.
+
+
+### e.
+
+```{r}
+callValLognorm <- function(S0, K, mu, sigma) {
+  d <- (log(S0 / K) + mu + sigma^2) / sigma
+  S0 * exp(mu + 0.5 * sigma^2) * pnorm(d) - K * pnorm(d - sigma)
+}
+
+optValueAppr <- function(nrep, r, sigma, S0, K, strikT) {
+  P <- Payoff(nrep, sigma, strikT, K)
+  t <- seq(0, strikT, by = strikT / n)[-1]
+  pGeo <- P$P_G
+  pAri <- P$P_A
+  vAri <- mean(pAri)
+  tbar <- mean(t)
+  sBar2 <- sigma^2 / n^2 / tbar * sum( (2 * seq(n) - 1) * rev(t) )
+  pGeoTrue <- callValLognorm(S0, K, (r - 0.5 * sigma^2) * tbar,
+                             sqrt(sBar2 * tbar))* exp(-r * strikT)
+  vGeo <- vAri - cov(pGeo, pAri) / var(pGeo) * (mean(pGeo) - pGeoTrue )
+  c(vGeo, vAri)
+}
+
+set.seed(123)
+K <- 1.5
+strikT <- 1
+sigma <- 0.4
+nrep = 500
+
+sim <- replicate(1000, optValueAppr(nrep, r, sigma, S0, K, strikT))
+cv = rbind(apply(sim, 1, mean),apply(sim, 1, sd))
+rownames(cv) <- c('Mean','SD')
+colnames(cv) <- c("Control variate by P_G", "P_A")
+cv
+
+```
+
+By using the control variate method with geometric mean Asian option, the standard error is getting much smaller, compared with the arithmetic mean Asian option, because the arithmetic mean Asian option and geometric mean Asian option has strong correlation.
